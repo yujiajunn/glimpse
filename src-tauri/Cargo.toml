@@ -40,7 +40,6 @@ tauri-plugin-shell.workspace = true
 
 pdfium-render.workspace = true
 image.workspace = true
-ffmpeg-next.workspace = true
 sled.workspace = true
 
 # Office / Font / Archive
