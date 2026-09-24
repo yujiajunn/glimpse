@@ -7,10 +7,7 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use super::{
-    ArchiveEntry, DirEntry, OfficeContent, OfficeKind, PreviewHandler, PreviewPayload,
-    PreviewRequest, SheetData, SlideData,
-};
+use super::{OfficeContent, OfficeKind, PreviewHandler, PreviewPayload, PreviewRequest, SheetData, SlideData};
 
 pub struct OfficePreview;
 

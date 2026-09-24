@@ -21,6 +21,7 @@ pub async fn cmd_show_preview(
     let payload = state
         .dispatcher
         .dispatch(req)
+        .await
         .map_err(|e| format!("{e:#}"))?;
 
     if let Some(window) = app.get_webview_window("preview") {

@@ -55,7 +55,6 @@ impl PreviewHandler for ArchivePreview {
         };
 
         let total_size: u64 = entries.iter().map(|e| e.size).sum();
-        let entry_count = entries.len() as u32;
 
         Ok(PreviewPayload::Archive {
             entries,

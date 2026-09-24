@@ -42,7 +42,6 @@ image = { version = "0.25", default-features = false }
 ffmpeg-next = "7"
 
 # Office / Font / Archive
-docx-rs = "0.4"
 calamine = "0.26"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tar = "0.4"
@@ -51,7 +50,7 @@ walkdir = "2"
 
 # Cache
 sled = "0.34"
-rkyv = "0.7"
+postcard = { version = "1", features = ["alloc"] }
 
 # Frontend build
 tauri = { version = "2", features = [] }

@@ -1,0 +1,2 @@
+[tools]
+rust = { version = "stable", host = "x86_64-pc-windows-gnu" }

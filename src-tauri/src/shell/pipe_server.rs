@@ -1,12 +1,6 @@
 //! 命名管道服务器：监听 Shell Extension DLL 发来的触发消息
 //!
 //! 协议：`\\.\pipe\GlimpsePreviewPipe`，每条消息 = 一个 JSON 行
-//!
-//! ```json
-//! { "path": "C:\\foo.png", "hwnd": 12345, "rect_x": 100, ... }
-//! ```
-
-use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -33,10 +27,7 @@ pub async fn serve(app: AppHandle) -> Result<()> {
     info!(pipe = %PIPE_NAME, "starting preview pipe server");
 
     loop {
-        match ServerOptions::new()
-            .create(NamedPipeServer::new, PIPE_NAME)
-            .await
-        {
+        match ServerOptions::new().create(PIPE_NAME) {
             Ok(server) => {
                 let app = app.clone();
                 tokio::spawn(async move {
@@ -94,8 +85,7 @@ fn dispatch(app: &AppHandle, msg: TriggerMessage) {
         let _ = window.set_focus();
 
         // 通知前端
-        let emit_result = app.emit_to("preview", "shell-trigger", msg.path.clone());
-        if let Err(e) = emit_result {
+        if let Err(e) = app.emit_to("preview", "shell-trigger", msg.path.clone()) {
             error!("emit shell-trigger failed: {e:#}");
         }
     } else {
@@ -103,11 +93,10 @@ fn dispatch(app: &AppHandle, msg: TriggerMessage) {
     }
 }
 
-/// 应用启动时确保管道服务端被持有
+/// 应用启动时启动管道服务端
 pub fn spawn(app: AppHandle) {
     tokio::spawn(async move {
-        let app = Arc::new(app);
-        if let Err(e) = serve((*app).clone()).await {
+        if let Err(e) = serve(app).await {
             error!("pipe server crashed: {e:#}");
         }
     });

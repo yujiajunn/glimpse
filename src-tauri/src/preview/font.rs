@@ -14,7 +14,7 @@ impl FontPreview {
         Self
     }
 
-    fn matches(path: &Path) -> bool {
+    fn matches_ext(path: &Path) -> bool {
         matches!(
             path.extension()
                 .and_then(|e| e.to_str())
@@ -38,7 +38,7 @@ impl PreviewHandler for FontPreview {
     }
 
     fn matches(&self, path: &Path) -> bool {
-        Self::matches(path)
+        Self::matches_ext(path)
     }
 
     async fn handle(&self, req: &PreviewRequest) -> Result<PreviewPayload> {

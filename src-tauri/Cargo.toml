@@ -43,19 +43,20 @@ image.workspace = true
 ffmpeg-next.workspace = true
 sled.workspace = true
 
-docx-rs.workspace = true
-calamine.workspace = true
+# Office / Font / Archive
 zip.workspace = true
 tar.workspace = true
 ttf-parser.workspace = true
 walkdir.workspace = true
+calamine.workspace = true
 
 # Runtime helpers
 async-trait = "0.1"
 parking_lot = "0.12"
 base64 = "0.22"
-bincode = "1.3"
+postcard.workspace = true
 sha2 = "0.10"
+once_cell = "1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

@@ -21,4 +21,5 @@ Thumbs.db
 # Local config
 *.local
 .env
-.env.local
+.env.localmise.toml
+Cargo.lock
