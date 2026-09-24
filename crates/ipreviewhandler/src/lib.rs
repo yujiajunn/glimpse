@@ -14,20 +14,19 @@
 #![allow(non_snake_case)]
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use windows::core::*;
 use windows::Win32::Foundation::*;
-use windows::Win32::Storage::Xps::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 // =========================================================================
-// GUID（生产前必须替换成真实 GUID）
+// CLSID（生产前必须用 uuidgen 生成真实 GUID）
 // =========================================================================
 
-const CLSID_SEER_PREVIEW: GUID = GUID::from_values(
+const CLSID_GLIMPSE_PREVIEW: GUID = GUID::from_values(
     0xAAAA_AAAA,
     0xBBBB,
     0xCCCC,
@@ -49,44 +48,52 @@ struct PreviewRequestIPC {
 }
 
 // =========================================================================
-// IPreviewHandler 实现
+// IPreviewHandler 实现（用 Mutex 实现内部可变性，因为 trait 是 &self）
 // =========================================================================
 
 #[implement(IPreviewHandler)]
 struct PreviewHandlerImpl {
-    ref_count: AtomicI32,
-    pending_rect: RECT,
-    pending_hwnd: HWND,
+    state: Mutex<HandlerState>,
+}
+
+struct HandlerState {
+    rect: RECT,
+    hwnd: HWND,
 }
 
 impl Default for PreviewHandlerImpl {
     fn default() -> Self {
         Self {
-            ref_count: AtomicI32::new(1),
-            pending_rect: RECT::default(),
-            pending_hwnd: HWND(std::ptr::null_mut()),
+            state: Mutex::new(HandlerState {
+                rect: RECT::default(),
+                hwnd: HWND(std::ptr::null_mut()),
+            }),
         }
     }
 }
 
 impl IPreviewHandler_Impl for PreviewHandlerImpl {
     fn SetWindow(&self, hwnd: HWND, prc: *const RECT) -> windows_core::Result<()> {
-        unsafe {
-            let rect = if prc.is_null() { RECT::default() } else { *prc };
-            // AtomicI32 没有 store_mut，改用 Mutex
-            // 简化起见这里用 UnsafeCell 持有，或者改成 Mutex
-            self.pending_hwnd = hwnd;
-            self.pending_rect = rect;
-        }
+        let rect = unsafe {
+            if prc.is_null() {
+                RECT::default()
+            } else {
+                *prc
+            }
+        };
+        let mut state = self.state.lock().unwrap();
+        state.hwnd = hwnd;
+        state.rect = rect;
         Ok(())
     }
 
     fn SetRect(&self, prc: *const RECT) -> windows_core::Result<()> {
-        unsafe {
-            if !prc.is_null() {
-                self.pending_rect = *prc;
-            }
+        if prc.is_null() {
+            return Ok(());
         }
+        let rect = unsafe { *prc };
+        let mut state = self.state.lock().unwrap();
+        state.rect = rect;
         Ok(())
     }
 
@@ -103,17 +110,19 @@ impl IPreviewHandler_Impl for PreviewHandlerImpl {
                 return Ok(());
             }
         };
-        tracing::info!("do preview: {tmp_path:?}");
+        tracing::info!(file = ?tmp_path.name, "do preview");
 
         // 2. 通过命名管道通知主进程
+        let state = self.state.lock().unwrap();
         let ipc = PreviewRequestIPC {
             path: tmp_path.to_string_lossy().to_string(),
-            hwnd: self.pending_hwnd.0 as isize,
-            rect_x: self.pending_rect.left,
-            rect_y: self.pending_rect.top,
-            rect_w: self.pending_rect.right - self.pending_rect.left,
-            rect_h: self.pending_rect.bottom - self.pending_rect.top,
+            hwnd: state.hwnd.0 as isize,
+            rect_x: state.rect.left,
+            rect_y: state.rect.top,
+            rect_w: state.rect.right - state.rect.left,
+            rect_h: state.rect.bottom - state.rect.top,
         };
+        drop(state);
 
         if let Err(e) = send_to_main(&ipc) {
             tracing::error!("send to main failed: {e:#}");
@@ -147,23 +156,21 @@ impl IPreviewHandler_Impl for PreviewHandlerImpl {
 #[implement(IClassFactory)]
 struct ClassFactory;
 
-impl IClassFactory_Impl for ClassFactory_Impl {
+impl IClassFactory_Impl for ClassFactory {
     fn CreateInstance(
         &self,
         punkouter: Option<&IUnknown>,
         riid: *const GUID,
         ppvobject: *mut *mut isize,
     ) -> windows_core::Result<()> {
-        unsafe {
-            if punkouter.is_some() {
-                return Err(windows_core::Error::new(
-                    CLASS_E_NOAGGREGATION,
-                    "aggregation not supported",
-                ));
-            }
-            let handler: IPreviewHandler = PreviewHandlerImpl::default().into();
-            handler.QueryInterface(*riid, ppvobject)
+        if punkouter.is_some() {
+            return Err(windows_core::Error::new(
+                CLASS_E_NOAGGREGATION,
+                "aggregation not supported",
+            ));
         }
+        let handler: IPreviewHandler = PreviewHandlerImpl::default().into();
+        unsafe { handler.QueryInterface(*riid, ppvobject) }
     }
 
     fn LockServer(&self, _flock: BOOL) -> windows_core::Result<()> {
@@ -182,7 +189,7 @@ extern "system" fn DllGetClassObject(
     ppv: *mut *mut isize,
 ) -> HRESULT {
     unsafe {
-        if *rclsid != CLSID_SEER_PREVIEW {
+        if *rclsid != CLSID_GLIMPSE_PREVIEW {
             return CLASS_E_CLASSNOTREG;
         }
         let class_factory: IClassFactory = ClassFactory {}.into();
@@ -197,7 +204,7 @@ extern "system" fn DllCanUnloadNow() -> HRESULT {
 
 #[no_mangle]
 extern "system" fn DllRegisterServer() -> HRESULT {
-    // 让主程序的 shell::install() 来写注册表
+    // 主程序的 glimpse.exe --install 来写注册表
     S_OK
 }
 
@@ -220,7 +227,7 @@ fn stream_to_temp_file(stream: &IStream) -> anyhow::Result<PathBuf> {
 
         let mut buffer = vec![0u8; 64 * 1024];
         let temp = std::env::temp_dir().join(format!(
-            "seer_preview_{}_{}.bin",
+            "glimpse_preview_{}_{}.bin",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
@@ -266,14 +273,14 @@ fn send_to_main(ipc: &PreviewRequestIPC) -> anyhow::Result<()> {
 
         let mut written = 0u32;
         let _ = WriteFile(
-            HANDLE(handle.0),
+            handle,
             Some(bytes.as_ptr() as *const c_void),
             bytes.len() as u32,
             Some(&mut written),
             None,
         );
 
-        CloseHandle(HANDLE(handle.0))?;
+        let _ = CloseHandle(handle);
         Ok(())
     }
 }
