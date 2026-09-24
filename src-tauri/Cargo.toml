@@ -1,0 +1,65 @@
+[package]
+name = "glimpse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "glimpse"
+path = "src/main.rs"
+
+[lib]
+name = "glimpse_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+glimpse_ipreviewhandler = { path = "../crates/ipreviewhandler" }
+glimpse_protocol = { path = "../crates/preview-protocol" }
+
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+bytes.workspace = true
+mime.workspace = true
+uuid.workspace = true
+windows.workspace = true
+windows-core.workspace = true
+
+tauri = { workspace = true }
+tauri-plugin-updater.workspace = true
+tauri-plugin-shell.workspace = true
+
+pdfium-render.workspace = true
+image.workspace = true
+ffmpeg-next.workspace = true
+sled.workspace = true
+
+docx-rs.workspace = true
+calamine.workspace = true
+zip.workspace = true
+tar.workspace = true
+ttf-parser.workspace = true
+walkdir.workspace = true
+
+# Runtime helpers
+async-trait = "0.1"
+parking_lot = "0.12"
+base64 = "0.22"
+bincode = "1.3"
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

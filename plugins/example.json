@@ -1,0 +1,9 @@
+{
+  "name": "example-plugin",
+  "version": "1.0.0",
+  "extensions": [
+    { "ext": "conf", "handler": "text" },
+    { "ext": "env", "handler": "text" },
+    { "ext": "lock", "handler": "text" }
+  ]
+}
