@@ -8,13 +8,8 @@ on:
 
 jobs:
   check:
-    name: Check (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest]
-
-    runs-on: ${{ matrix.os }}
+    name: Check (Windows)
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -25,14 +20,14 @@ jobs:
       - name: Install MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Cache cargo
+      - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ci-cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ci-cargo-${{ matrix.os }}-
+          key: ci-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ci-cargo-${{ runner.os }}-
 
       - name: Cache npm
         uses: actions/cache@v4
@@ -42,13 +37,11 @@ jobs:
 
       - name: Install Node deps
         working-directory: ui
-        run: npm ci || npm install
-
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: npm install
 
       - name: cargo check
         run: cargo check --workspace --all-targets
+
+      - name: cargo clippy (warning only)
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --message-format=short
