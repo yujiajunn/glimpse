@@ -38,8 +38,8 @@ windows-core = "0.58"
 
 # Preview pipelines
 pdfium-render = "0.8"
-image = { version = "0.25", default-features = false }
-# 不依赖 ffmpeg：视频/音频预览让前端 <video>/<audio> + 系统 codec 播
+# image crate：要 PNG/JPEG/GIF/WebP/BMP/AVIF（系统 codec）但不依赖 libheif
+image = { version = "0.25", default-features = false, features = ["default-formats", "avif"] }
 
 # Office / Font / Archive
 calamine = "0.26"
