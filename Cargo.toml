@@ -53,7 +53,7 @@ sled = "0.34"
 postcard = { version = "1", features = ["alloc"] }
 
 # Frontend build
-tauri = { version = "2", features = [] }
+tauri = { version = "2", default-features = false, features = ["wry"] }
 tauri-plugin-updater = "2"
 tauri-plugin-shell = "2"
 
