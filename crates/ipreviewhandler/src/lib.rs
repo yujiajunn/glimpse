@@ -110,7 +110,7 @@ impl IPreviewHandler_Impl for PreviewHandlerImpl {
                 return Ok(());
             }
         };
-        tracing::info!(file = ?tmp_path.name, "do preview");
+        tracing::info!(file = %tmp_path.display(), "do preview");
 
         // 2. 通过命名管道通知主进程
         let state = self.state.lock().unwrap();
@@ -265,7 +265,7 @@ fn send_to_main(ipc: &PreviewRequestIPC) -> anyhow::Result<()> {
             None,
             OPEN_EXISTING,
             FILE_FLAGS_AND_ATTRIBUTES(0),
-            HANDLE(std::ptr::null_mut()),
+            None,
         )?;
 
         let json = serde_json::to_string(ipc)?;
