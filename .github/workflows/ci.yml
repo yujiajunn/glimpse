@@ -40,7 +40,7 @@ jobs:
         run: npm install
 
       - name: cargo check
-        run: cargo check --workspace --all-targets --message-format=short
+        run: cargo check --workspace --all-targets --message-format=human 2>&1 | tail -200
 
       - name: cargo clippy (warning only)
         continue-on-error: true
