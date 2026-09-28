@@ -112,27 +112,33 @@ jobs:
       - name: Build DLL
         working-directory: crates/ipreviewhandler
         run: |
-          set -o pipefail
-          cargo build --release --target ${{ matrix.target }} --verbose 2>&1 | tee build.log
-          echo "---EXIT: $?---"
+          echo "=== Start Build DLL step ==="
+          echo "Working dir: $(pwd)"
+          pwd > build.log
+          cargo --version >> build.log 2>&1
+          rustc --version >> build.log 2>&1
+          echo "=== Running cargo build ===" >> build.log
+          cargo build --release --target ${{ matrix.target }} --verbose >> build.log 2>&1
+          echo "=== Cargo build exit code: $? ===" >> build.log
+          echo "=== Target dir contents ===" >> build.log
+          ls -la target/${{ matrix.target }}/release/ >> build.log 2>&1
+          echo "=== End ===" >> build.log
         continue-on-error: true
 
-      - name: Upload build log
+      - name: Upload build log (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dll-build-log-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
           path: crates/ipreviewhandler/build.log
+        continue-on-error: true
 
-      - name: List build output
-        working-directory: crates/ipreviewhandler
-        run: ls -la target/${{ matrix.target }}/release/ 2>&1 || true
-
-      - name: Upload DLL
+      - name: Upload DLL (if exists)
         uses: actions/upload-artifact@v4
         with:
           name: shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
           path: crates/ipreviewhandler/target/${{ matrix.target }}/release/glimpse_previewhandler.dll
+        if-no-files-found: ignore
 
   # ================================================================
   # 发布到 GitHub Release
