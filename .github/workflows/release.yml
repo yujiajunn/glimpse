@@ -34,8 +34,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install MSVC
+      - name: Setup MSVC + link.exe
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.target == 'i686-pc-windows-msvc' && 'x86' || 'x64' }}
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -96,8 +98,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install MSVC
+      - name: Setup MSVC + link.exe
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.target == 'i686-pc-windows-msvc' && 'x86' || 'x64' }}
 
       - name: Cache cargo
         uses: actions/cache@v4
