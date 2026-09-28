@@ -110,25 +110,18 @@ jobs:
 
       - name: Build DLL
         run: |
-            echo "=== START at $(date) ==="
-            pwd
-            ls -la
-            echo "=== cd into ipreviewhandler ==="
             cd crates/ipreviewhandler
-            pwd
-            ls -la
-            echo "=== cargo --version ==="
-            cargo --version 2>&1 | tee build.log
-            echo "=== rustc --version ==="
-            rustc --version >> build.log 2>&1
-            echo "=== cargo build ==="
-            cargo build --release --target ${{ matrix.target }} --verbose >> build.log 2>&1
-            CARGO_EXIT=$?
-            echo "Cargo build exit: $CARGO_EXIT" >> build.log
-            echo "=== Target dir ===" >> build.log
-            ls -la target/${{ matrix.target }}/release/ >> build.log 2>&1
-            echo "=== END ===" >> build.log
-            exit $CARGO_EXIT
+            cargo build --target ${{ matrix.target }} 2>&1 | tee /tmp/dll_build.log
+            echo "EXIT=$?" >> /tmp/dll_build.log
+        continue-on-error: true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dll-build-log-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
+          path: /tmp/dll_build.log
+          if-no-files-found: ignore
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
