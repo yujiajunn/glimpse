@@ -109,8 +109,26 @@ jobs:
           restore-keys: dll-cargo-${{ matrix.target }}-
 
       - name: Build DLL
-        working-directory: crates/ipreviewhandler
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+            echo "=== START at $(date) ==="
+            pwd
+            ls -la
+            echo "=== cd into ipreviewhandler ==="
+            cd crates/ipreviewhandler
+            pwd
+            ls -la
+            echo "=== cargo --version ==="
+            cargo --version 2>&1 | tee build.log
+            echo "=== rustc --version ==="
+            rustc --version >> build.log 2>&1
+            echo "=== cargo build ==="
+            cargo build --release --target ${{ matrix.target }} --verbose >> build.log 2>&1
+            CARGO_EXIT=$?
+            echo "Cargo build exit: $CARGO_EXIT" >> build.log
+            echo "=== Target dir ===" >> build.log
+            ls -la target/${{ matrix.target }}/release/ >> build.log 2>&1
+            echo "=== END ===" >> build.log
+            exit $CARGO_EXIT
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
