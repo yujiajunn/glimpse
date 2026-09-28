@@ -1,5 +1,5 @@
 [package]
-name = "glimpse_ipreviewhandler"
+name = "glimpse_previewhandler"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

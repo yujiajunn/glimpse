@@ -5,10 +5,6 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag like v0.1.0"
-        required: false
 
 permissions:
   contents: write
@@ -25,8 +21,10 @@ jobs:
         include:
           - target: x86_64-pc-windows-msvc
             arch: x64
+            out_dir: x64
           - target: i686-pc-windows-msvc
             arch: x86
+            out_dir: x86
 
     runs-on: windows-latest
 
@@ -47,16 +45,15 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-${{ matrix.target }}-
+          key: app-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: app-cargo-${{ matrix.target }}-
 
       - name: Cache npm
         uses: actions/cache@v4
         with:
           path: ui/node_modules
-          key: npm-${{ hashFiles('ui/package-lock.json') }}
-          restore-keys: npm-
+          key: app-npm-${{ hashFiles('ui/package-lock.json') }}
+          restore-keys: app-npm-
 
       - name: Install Node deps
         working-directory: ui
@@ -79,7 +76,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
 
   # ================================================================
-  # Shell Extension DLL（x86 + x64 双架构）
+  # Shell Extension DLL（x86 + x64，**两个架构都要**）
   # ================================================================
   shell-dll:
     name: Shell DLL (${{ matrix.target }})
@@ -109,30 +106,18 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: crates-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: crates-cargo-${{ matrix.target }}-
+          key: dll-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: dll-cargo-${{ matrix.target }}-
 
       - name: Build DLL
         working-directory: crates/ipreviewhandler
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Rename DLL
-        shell: bash
-        run: |
-          cd crates/ipreviewhandler/target/${{ matrix.target }}/release
-          if [ "${{ matrix.target }}" = "x86_64-pc-windows-msvc" ]; then
-            mv seer_ipreviewhandler.dll glimpse_previewhandler_x64.dll || true
-            mv glimpse_ipreviewhandler.dll glimpse_previewhandler_x64.dll
-          else
-            mv glimpse_ipreviewhandler.dll glimpse_previewhandler_x86.dll
-          fi
-          ls -la *.dll
-
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: glimpse-shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
-          path: crates/ipreviewhandler/target/${{ matrix.target }}/release/glimpse_previewhandler_*.dll
+          name: shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
+          path: crates/ipreviewhandler/target/${{ matrix.target }}/release/glimpse_previewhandler.dll
 
   # ================================================================
   # 发布到 GitHub Release
@@ -149,8 +134,7 @@ jobs:
           path: artifacts
 
       - name: List artifacts
-        run: |
-          ls -laR artifacts/
+        run: ls -laR artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

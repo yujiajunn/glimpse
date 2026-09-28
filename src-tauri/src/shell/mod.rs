@@ -7,23 +7,25 @@ use tracing::info;
 use winreg::enums::*;
 use winreg::RegKey;
 
-const CLSID_X64: &str = "{B5E8DAAC-1001-4F1E-AAAA-AAAAAAAAAAAA}";
-const CLSID_X86: &str = "{B5E8DAAC-1002-4F1E-AAAA-AAAAAAAAAAAA}";
+/// com.local.glimpse.shell.preview 的 CLSID
+const CLSID_GLIMPSE: &str = "{d7f66eff-9453-4de1-93f1-4290aee16e95}";
 const FRIENDLY_NAME: &str = "Glimpse Preview Handler";
 
 /// 把 COM 服务器 + PreviewHandler 关联写到注册表
+///
+/// 同一 CLSID 注册到 InProcServer32 的 (default) 值由系统按调用进程位数
+/// 自动选择 32 / 64 位 DLL（通过注册表重定向）。
 pub fn install() -> Result<()> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
 
-    register_clsid(&hkcr, CLSID_X64, "glimpse_previewhandler_x64.dll")?;
-    register_clsid(&hkcr, CLSID_X86, "glimpse_previewhandler_x86.dll")?;
+    register_clsid(&hkcr, CLSID_GLIMPSE, "glimpse_previewhandler.dll")?;
 
     // 关联到所有文件类型（GUID 8895b1c6-b41f-4c1c-a562-0d564250836f = IPreviewHandler）
     let (handler, _) = hkcr
         .create_subkey(r"*\shellex\{8895b1c6-b41f-4c1c-a562-0d564250836f}")
         .context("create PreviewHandlers key")?;
     handler
-        .set_value("Glimpse", &CLSID_X64)
+        .set_value("Glimpse", &CLSID_GLIMPSE)
         .context("set Glimpse CLSID")?;
 
     info!("shell extension installed");
@@ -34,8 +36,7 @@ pub fn uninstall() -> Result<()> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
 
     let _ = hkcr.delete_subkey_all(r"*\shellex\{8895b1c6-b41f-4c1c-a562-0d564250836f}\Glimpse");
-    let _ = hkcr.delete_subkey_all(format!(r"CLSID\{CLSID_X64}"));
-    let _ = hkcr.delete_subkey_all(format!(r"CLSID\{CLSID_X86}"));
+    let _ = hkcr.delete_subkey_all(format!(r"CLSID\{CLSID_GLIMPSE}"));
 
     info!("shell extension uninstalled");
     Ok(())

@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-glimpse_ipreviewhandler = { path = "../crates/ipreviewhandler" }
+glimpse_previewhandler = { path = "../crates/ipreviewhandler" }
 glimpse_protocol = { path = "../crates/preview-protocol" }
 
 serde.workspace = true
