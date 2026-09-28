@@ -58,7 +58,7 @@ pub async fn cmd_load_pdf_page(path: String, page: u32, dpi: u32) -> Result<Stri
     let doc = pdfium
         .load_pdf_from_file(&path, None)
         .map_err(stringify)?;
-    let p = doc.pages().get(*&page as u16).map_err(stringify)?;
+    let p = doc.pages().get(page as usize).map_err(stringify)?;
     let bitmap = p
         .render(dpi as f32, dpi as f32, PdfBitmapFormat::BGRA)
         .map_err(stringify)?;

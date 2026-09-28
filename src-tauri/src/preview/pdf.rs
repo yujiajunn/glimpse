@@ -11,10 +11,10 @@ pub struct PdfPreview {
 
 impl PdfPreview {
     pub fn new() -> Self {
-        let doc = Pdfium::new(
-            Pdfium::bind_to_statically_linked_library().ok(),
-        )
-        .ok();
+        // 编译期绑定的 pdfium 静态库 → 直接构造
+        let doc = Pdfium::bind_to_statically_linked_library()
+            .ok()
+            .and_then(|bindings| Pdfium::new(bindings).ok());
         Self { doc }
     }
 }
