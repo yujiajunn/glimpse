@@ -111,7 +111,22 @@ jobs:
 
       - name: Build DLL
         working-directory: crates/ipreviewhandler
-        run: cargo build --release --target ${{ matrix.target }} --verbose
+        run: |
+          set -o pipefail
+          cargo build --release --target ${{ matrix.target }} --verbose 2>&1 | tee build.log
+          echo "---EXIT: $?---"
+        continue-on-error: true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dll-build-log-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
+          path: crates/ipreviewhandler/build.log
+
+      - name: List build output
+        working-directory: crates/ipreviewhandler
+        run: ls -la target/${{ matrix.target }}/release/ 2>&1 || true
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
