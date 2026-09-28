@@ -110,9 +110,18 @@ jobs:
 
       - name: Build DLL
         run: |
-            cd crates/ipreviewhandler
+            echo "STEP STARTED at $(date)"
+            ls -la
+            cd crates/ipreviewhandler || exit 1
+            echo "IN DIR: $(pwd)"
+            ls -la
+            cat Cargo.toml | head -10
+            echo "About to cargo build..."
             cargo build --target ${{ matrix.target }} 2>&1 | tee /tmp/dll_build.log
-            echo "EXIT=$?" >> /tmp/dll_build.log
+            EXIT=$?
+            echo "Cargo exit: $EXIT"
+            ls -la target/ 2>&1 || echo "no target dir"
+            ls -la target/${{ matrix.target }}/release/ 2>&1 || echo "no release subdir"
         continue-on-error: true
 
       - name: Upload build log
