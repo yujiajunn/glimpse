@@ -64,14 +64,17 @@ impl PreviewHandler for FontPreview {
 
         let glyph_count = face.number_of_glyphs() as u32;
 
-        // 字体预览图（前端 canvas 实时画更佳，后端占位）
-        let specimen_png = String::new();
+        // 把字体二进制也返回去，前端用 FontFace API 实时渲染
+        let font_data_base64 = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &bytes,
+        );
 
         Ok(PreviewPayload::Font {
             family,
             style,
             glyph_count,
-            specimen_png,
+            font_data_base64,
         })
     }
 }

@@ -73,7 +73,7 @@ export type PreviewPayload =
       family: string;
       style: string;
       glyph_count: number;
-      specimen_png: string;
+      font_data_base64: string;
     }
   | {
       kind: "archive";

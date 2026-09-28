@@ -76,8 +76,8 @@ pub enum PreviewPayload {
         family: String,
         style: String,
         glyph_count: u32,
-        /// base64 PNG 字符映射表
-        specimen_png: String,
+        /// base64 编码的字体二进制，前端用 FontFace API 加载
+        font_data_base64: String,
     },
     Archive {
         entries: Vec<ArchiveEntry>,
