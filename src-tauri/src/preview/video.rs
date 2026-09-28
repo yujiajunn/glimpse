@@ -55,7 +55,8 @@ impl PreviewHandler for VideoPreview {
 
         // 用 ffmpeg-next 取元数据（时长、分辨率）
         // 简化版：直接返回文件 URL，让前端播放
-        let url = format!("file://{}", req.path.replace('\\', "/"));
+        // 用 file:// URL 让前端 <video> / <audio> 直接播
+let url = format!("file:///{}", req.path.replace('\\', "/"));
 
         // TODO: 调 ffmpeg-next 探针得到 duration / width / height
         let duration_sec = 0.0;
