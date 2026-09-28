@@ -62,12 +62,15 @@ jobs:
         working-directory: ui
         run: npm run build
 
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress || echo "NSIS install via choco failed; falling back to built-in bundler"
+
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
       - name: Build Tauri app
         working-directory: src-tauri
-        run: cargo tauri build --target ${{ matrix.target }}
+        run: cargo tauri build --target ${{ matrix.target }} --bundles nsis
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
