@@ -111,7 +111,7 @@ jobs:
 
       - name: Build DLL
         working-directory: crates/ipreviewhandler
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} --verbose 2>&1 | tail -100
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
