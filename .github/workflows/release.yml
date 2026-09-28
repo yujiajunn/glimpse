@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   # ================================================================
-  # 主程序 + 安装包
+  # 主程序 + exe
   # ================================================================
   app:
     name: App (${{ matrix.target }})
@@ -51,8 +51,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
 
       - name: Install Node deps
         working-directory: ui
@@ -65,18 +63,19 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
-      - name: Build Tauri app (no bundle, just exe)
+      - name: Build Tauri app (no bundle)
         working-directory: src-tauri
-        run: cargo tauri build --target ${{ matrix.target }} --no-bundle --verbose
+        run: cargo tauri build --target ${{ matrix.target }} --no-bundle
 
       - name: Upload exe
         uses: actions/upload-artifact@v4
         with:
           name: glimpse-exe-${{ matrix.arch }}
           path: src-tauri/target/${{ matrix.target }}/release/glimpse.exe
+        if-no-files-found: error
 
   # ================================================================
-  # Shell Extension DLL（x86 + x64）
+  # Shell Extension DLL
   # ================================================================
   shell-dll:
     name: Shell DLL (${{ matrix.target }})
@@ -111,34 +110,14 @@ jobs:
 
       - name: Build DLL
         working-directory: crates/ipreviewhandler
-        run: |
-          echo "=== Start Build DLL step ==="
-          echo "Working dir: $(pwd)"
-          pwd > build.log
-          cargo --version >> build.log 2>&1
-          rustc --version >> build.log 2>&1
-          echo "=== Running cargo build ===" >> build.log
-          cargo build --release --target ${{ matrix.target }} --verbose >> build.log 2>&1
-          echo "=== Cargo build exit code: $? ===" >> build.log
-          echo "=== Target dir contents ===" >> build.log
-          ls -la target/${{ matrix.target }}/release/ >> build.log 2>&1
-          echo "=== End ===" >> build.log
-        continue-on-error: true
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Upload build log (always)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dll-build-log-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
-          path: crates/ipreviewhandler/build.log
-        continue-on-error: true
-
-      - name: Upload DLL (if exists)
+      - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
           name: shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
           path: crates/ipreviewhandler/target/${{ matrix.target }}/release/glimpse_previewhandler.dll
-        if-no-files-found: ignore
+        if-no-files-found: error
 
   # ================================================================
   # 发布到 GitHub Release
