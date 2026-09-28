@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { PreviewPayload } from "../types";
 import * as pdfjsLib from "pdfjs-dist";
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+// 用 jsDelivr CDN 上的 worker（避免 Vite 打包路径问题）
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
 
 export function PdfView({ payload }: { payload: Extract<PreviewPayload, { kind: "pdf" }> }) {
   const containerRef = useRef<HTMLDivElement>(null);
