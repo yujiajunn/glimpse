@@ -26,12 +26,12 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 // CLSID（com.local.glimpse.shell.preview）
 // =========================================================================
 
-const CLSID_GLIMPSE_PREVIEW: GUID = GUID::from_values(
-    0xd7f6_6eff,
-    0x9453,
-    0x4de1,
-    [0x93, 0xf1, 0x42, 0x90, 0xae, 0xe1, 0x6e, 0x95],
-);
+const CLSID_GLIMPSE_PREVIEW: GUID = GUID {
+    data1: 0xd7f6_6eff,
+    data2: 0x9453,
+    data3: 0x4de1,
+    data4: [0x93, 0xf1, 0x42, 0x90, 0xae, 0xe1, 0x6e, 0x95],
+};
 
 // =========================================================================
 // IPC payload
