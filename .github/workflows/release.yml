@@ -30,24 +30,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            src-tauri -> target
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - working-directory: ui
-        run: npm ci
-      - working-directory: ui
-        run: npm run build
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-      - working-directory: src-tauri
-        run: cargo tauri build --target ${{ matrix.target }}
+            . -> target
+      - run: cargo build --release --target ${{ matrix.target }} --bin glimpse
       - uses: actions/upload-artifact@v4
         with:
-          name: glimpse-installer-${{ matrix.arch }}
-          path: |
-              src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
-              src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+          name: glimpse-exe-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/glimpse.exe
 
   shell-dll:
     name: Shell DLL (${{ matrix.target }})
@@ -67,13 +55,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            crates/ipreviewhandler -> target
-      - working-directory: crates/ipreviewhandler
+            glimpse-shell -> glimpse-shell/target
+      - working-directory: glimpse-shell
         run: cargo build --release --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
           name: shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
-        if-no-files-found: ignore
+          path: glimpse-shell/target/${{ matrix.target }}/release/glimpse_previewhandler.dll
 
   release:
     name: Release
@@ -87,7 +75,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/**/*.msi
             artifacts/**/*.exe
             artifacts/**/*.dll
           generate_release_notes: true
