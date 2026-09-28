@@ -1,6 +1,5 @@
 /target
 **/*.rs.bk
-Cargo.lock
 
 # Tauri
 src-tauri/gen/
@@ -21,5 +20,7 @@ Thumbs.db
 # Local config
 *.local
 .env
-.env.localmise.toml
-Cargo.lock
+.env.local
+
+# Rust tool manager
+mise.toml
