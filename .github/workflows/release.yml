@@ -72,7 +72,7 @@ jobs:
         with:
           name: glimpse-exe-${{ matrix.arch }}
           path: src-tauri/target/${{ matrix.target }}/release/glimpse.exe
-        if-no-files-found: error
+          if-no-files-found: error
 
   # ================================================================
   # Shell Extension DLL
@@ -135,7 +135,7 @@ jobs:
         with:
           name: shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
           path: crates/ipreviewhandler/target/${{ matrix.target }}/release/glimpse_previewhandler.dll
-        if-no-files-found: error
+          if-no-files-found: error
 
   # ================================================================
   # 发布到 GitHub Release
