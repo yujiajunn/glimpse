@@ -65,16 +65,17 @@ impl PreviewHandler for ArchivePreview {
 
 fn read_zip(path: &str) -> Result<Vec<ArchiveEntry>> {
     use std::fs::File;
-    use std::io::Read;
     let file = File::open(path)?;
     let mut zip = zip::ZipArchive::new(file)?;
     let mut entries = Vec::with_capacity(zip.len());
 
     for i in 0..zip.len() {
         let entry = zip.by_index(i)?;
-        let modified = entry.last_modified().map(|t| {
-            t.to_time_t().unwrap_or(0)
-        });
+        // zip 2.x: last_modified -> Option<DateTime>; DateTime::to_time_t -> Result<i64>
+        let modified = entry
+            .last_modified()
+            .and_then(|t| t.to_time_t().ok())
+            .map(|s| s as i64);
         entries.push(ArchiveEntry {
             name: entry.name().to_string(),
             size: entry.size(),
@@ -93,7 +94,7 @@ fn read_tar(path: &str) -> Result<Vec<ArchiveEntry>> {
     for entry in tar.entries()? {
         let entry = entry?;
         let header = entry.header();
-        let modified = header.mtime().ok();
+        let modified = header.mtime().ok().map(|m| m as i64);
         entries.push(ArchiveEntry {
             name: entry.path()?.to_string_lossy().to_string(),
             size: entry.size(),
@@ -101,5 +102,5 @@ fn read_tar(path: &str) -> Result<Vec<ArchiveEntry>> {
             modified,
         });
     }
-    Ok(())
+    Ok(entries)
 }
