@@ -10,6 +10,3 @@ crate-type = ["cdylib"]
 name = "glimpse_previewhandler"
 
 [dependencies]
-serde_json.workspace = true
-tracing.workspace = true
-windows.workspace = true
