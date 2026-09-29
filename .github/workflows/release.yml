@@ -27,10 +27,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: ilammy/msvc-dev-cmd@v1
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            . -> target
       - run: cargo build --release --target ${{ matrix.target }} --bin glimpse 2>&1 | tee app_build.log
         continue-on-error: true
 
@@ -63,10 +59,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: ilammy/msvc-dev-cmd@v1
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            glimpse-shell -> glimpse-shell/target
       - working-directory: glimpse-shell
         run: cargo build --release --target ${{ matrix.target }} 2>&1 | tee ../dll_build.log
         continue-on-error: true
