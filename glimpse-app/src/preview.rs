@@ -256,116 +256,17 @@ fn decode_pdf(path: &Path, title: &str) -> Result<PreviewContent> {
 }
 
 // ================================================================
-// 视频 / 音频（ffmpeg：取元数据 + 首帧缩略图）
+// 视频 / 音频（用 ShellExecute 调系统默认播放器：Media Player、wmplayer 等）
 // ================================================================
 
-fn decode_media(path: &Path, title: &str, kind: Kind) -> Result<PreviewContent> {
-    use ffmpeg_next as ffmpeg;
-
-    let _ = kind; // 已经在 detect_kind 里分过
-    let path_str = path.to_string_lossy().to_string();
-    let path_c = path_str.clone();
-
-    // ffmpeg 是阻塞 API，放 spawn_blocking 里
-    let result = tokio::task::spawn_blocking(move || -> Result<(f32, i32, i32, Option<(i32, i32, Vec<u8>)>)> {
-        ffmpeg::init().map_err(|e| anyhow::anyhow!("ffmpeg init: {e}"))?;
-
-        let input = ffmpeg::format::input(&path_c)?;
-        let stream = input
-            .streams()
-            .best(ffmpeg::media::Type::Video)
-            .ok_or_else(|| anyhow::anyhow!("no video stream"))?;
-
-        let video_stream_index = stream.index();
-        let duration_sec = input.duration() as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE);
-        let duration_sec = duration_sec as f32;
-
-        // 取第一帧
-        let context_decoder = ffmpeg::codec::context::Context::from_parameters(
-            ffmpeg::codec::parameters::Parameters::from(&input.format(), video_stream_index),
-        )?;
-        let mut decoder = context_decoder.decoder().video()?;
-
-        let (width, height) = (decoder.width() as i32, decoder.height() as i32);
-
-        // 跳到第一个关键帧
-        let packet = ffmpeg_next::codec::packet::Packet::empty();
-        // ... (简化：直接 read_frames 到第一个)
-        let mut got_frame = false;
-        let mut bmp_data: Option<(i32, i32, Vec<u8>)> = None;
-
-        for (stream_idx, packet) in input.packets() {
-            if stream_idx != video_stream_index {
-                continue;
-            }
-            decoder.send_packet(&packet)?;
-            let mut frame = ffmpeg::frame::Video::empty();
-            if decoder.receive_frame(&mut frame).is_ok() {
-                // 转 RGBA
-                let mut rgb_frame = ffmpeg::frame::Video::empty();
-                let mut converter = ffmpeg_next::software::scaling::Context::get(
-                    frame.format(),
-                    frame.width(),
-                    frame.height(),
-                    ffmpeg::format::Pixel::BGRA,
-                    frame.width(),
-                    frame.height(),
-                )?;
-                converter.run(&frame, &mut rgb_frame)?;
-                let data = rgb_frame.data(0).to_vec();
-                bmp_data = Some((frame.width() as i32, frame.height() as i32, data));
-                got_frame = true;
-                break;
-            }
-        }
-        let _ = packet;
-
-        Ok((duration_sec, width, height, bmp_data))
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("task join: {e}"))??;
-
-    let (duration_sec, width, height, bmp_data) = result;
-
-    let bitmap = if let Some((bw, bh, data)) = bmp_data {
-        unsafe {
-            use windows::Win32::Graphics::Gdi::{
-                CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-            };
-            let bmi = BITMAPINFO {
-                bmiHeader: BITMAPINFOHEADER {
-                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                    biWidth: bw,
-                    biHeight: -bh,
-                    biPlanes: 1,
-                    biBitCount: 32,
-                    biCompression: BI_RGB.0,
-                    biSizeImage: 0,
-                    biXPelsPerMeter: 0,
-                    biYPelsPerMeter: 0,
-                    biClrUsed: 0,
-                    biClrImportant: 0,
-                },
-                bmiColors: [Default::default(); 1],
-            };
-            let mut bits: *mut u8 = std::ptr::null_mut();
-            let hbm = CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0)?;
-            std::ptr::copy_nonoverlapping(data.as_ptr(), bits, data.len());
-            (hbm, bw, bh)
-        }
-    } else {
-        (None, None, None)
-    };
-
-    let (hbm, bw, bh) = bitmap;
-
-    Ok(PreviewContent::Video {
-        title: title.to_string(),
-        bitmap: hbm,
-        bitmap_size: bw.zip(bh),
-        duration_sec,
-        width,
-        height,
+fn decode_media(path: &Path, title: &str, _kind: Kind) -> Result<PreviewContent> {
+    open_with_default_app(&path.to_path_buf());
+    // 视频/音频无法在我们窗口内嵌播放，告知用户已转交系统
+    Ok(PreviewContent::Unsupported {
+        reason: format!(
+            "{} 已在系统默认播放器中打开（视频/音频暂时调外部播放器）",
+            title
+        ),
     })
 }
 

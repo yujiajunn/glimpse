@@ -37,9 +37,8 @@ windows-core = "0.58"
 # Decoders
 image = { version = "0.25", default-features = false, features = ["default-formats"] }
 pdfium-render = "0.8"
-# ffmpeg 用于视频音频探针（时长 + 缩略图）。用 build feature 让 ffmpeg-sys-next
-# 编译 ffmpeg 源码（避免依赖系统 ffmpeg + pkg-config，CI 干净环境里这俩都没有）
-ffmpeg-next = { version = "7", default-features = false, features = ["build", "format", "codec", "software-scaling"] }
+# 视频/音频：用 Windows 系统默认播放器（mstv.exe / wmplayer.exe 等）
+# 避免 ffmpeg-sys-next 在 CI 上编译（pkg-config / nasm 等缺）
 
 [profile.release]
 opt-level = 3
