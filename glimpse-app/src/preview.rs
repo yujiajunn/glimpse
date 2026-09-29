@@ -200,8 +200,11 @@ fn decode_pdf(path: &Path, title: &str) -> Result<PreviewContent> {
     };
     use pdfium_render::prelude::*;
 
-    let pdfium = Pdfium::new(Pdfium::bind_to_system_library().ok())
-        .context("pdfium library")?;
+    let pdfium = Pdfium::new(
+        Pdfium::bind_to_system_library()
+            .ok()
+            .ok_or_else(|| anyhow::anyhow!("pdfium library"))?
+    );
 
     let document = pdfium
         .load_pdf_from_file(path, None)

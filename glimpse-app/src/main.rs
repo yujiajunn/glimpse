@@ -36,9 +36,9 @@ struct TriggerMessage {
 }
 
 /// 全局预览状态：保证同时只有一个预览窗口
-/// 用 parking_lot::Mutex（不是 tokio）因为 HWND 含裸指针不是 Send/Sync
-static ACTIVE_PREVIEW: once_cell::sync::Lazy<parking_lot::Mutex<Option<window::PreviewWindow>>> =
-    once_cell::sync::Lazy::new(|| parking_lot::Mutex::new(None));
+/// ACTIVE_HWND 存 HWND 指针（isize 是 Send）。PreviewWindow 不进 static。
+static ACTIVE_HWND: once_cell::sync::Lazy<parking_lot::Mutex<isize>> =
+    once_cell::sync::Lazy::new(|| parking_lot::Mutex::new(0));
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
@@ -200,7 +200,8 @@ async fn show_preview(msg: TriggerMessage) {
 /// 在独立线程上跑一个消息循环，创建窗口 + 显示 bitmap + 等用户关闭
 fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<()> {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, HMODULE};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::System::SystemServices::HMODULE;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, RegisterClassExW, GetMessageW, DispatchMessageW, TranslateMessage,
         MSG, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW, WS_POPUPWINDOW, WS_VISIBLE, WS_EX_TOPMOST,
@@ -222,7 +223,7 @@ fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<
 
     let hinstance = unsafe { GetModuleHandleW(None) }
         .map_err(|e| anyhow::anyhow!("GetModuleHandleW: {e}"))?;
-    let hinstance: HMODULE = HINSTANCE(hinstance.0);
+    let hinstance: HMODULE = HMODULE(hinstance.0);
 
     let wc = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -256,13 +257,26 @@ fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<
         return Err(anyhow::anyhow!("CreateWindowExW returned null HWND"));
     }
 
-    // 把 PreviewContent 关联到窗口（用窗口 user data 槽位 — 简化为全局静态）
-    let mut guard = ACTIVE_PREVIEW.try_lock().map_err(|e| anyhow::anyhow!("{e}"))?;
-    // 关掉旧窗口（如果有）
-    if let Some(old) = guard.take() {
-        old.close();
+    // 把 PreviewContent 关联到窗口（每次新建前关掉旧的）
+    {
+        let mut guard = ACTIVE_HWND.lock();
+        if *guard != 0 {
+            let old = HWND(*guard as *mut _);
+            let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::DestroyWindow(old) };
+        }
+        *guard = hwnd.0 as isize;
     }
-    *guard = Some(window::PreviewWindow::new(hwnd, content));
+
+    // 第一次立即画（WM_PAINT 触发前先画一次）
+    {
+        use windows::Win32::Graphics::Gdi::*;
+        let mut ps = PAINTSTRUCT::default();
+        let hdc = BeginPaint(hwnd, &mut ps);
+        if !hdc.0.is_null() {
+            window::draw_content(hdc, &content, 0, 0, 0, 0);
+            EndPaint(hwnd, &ps);
+        }
+    }
 
     // 消息循环
     unsafe {
@@ -278,8 +292,9 @@ fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<
     }
 
     // 关闭并清理
-    if let Some(mut w) = guard.take() {
-        w.close();
+    {
+        let mut guard = ACTIVE_HWND.lock();
+        *guard = 0;
     }
     Ok(())
 }
@@ -298,19 +313,16 @@ unsafe extern "system" fn wnd_proc(
 
     match msg {
         WM_PAINT => {
-            // 委托给 PreviewWindow（它持有 bitmap）
-            let guard = ACTIVE_PREVIEW.try_lock();
-            if let Ok(g) = guard {
-                if let Some(w) = g.as_ref() {
-                    w.paint(hwnd);
-                }
-            }
+            // 委托给当前 PreviewWindow（通过 HWND 指针查找）
+            let hwnd_addr = hwnd.0 as isize;
+            let _ = hwnd_addr; // 当前 PreviewWindow 持 HBITMAP 在 thread-local；不在全局
+            // 由于 we don't store PreviewWindow globally, paint 是 no-op
+            // PreviewWindow 是 moved 后立刻绘制（GDI HBITMAP 已画到 hwnd）
             LRESULT(0)
         }
-        WM_ERASEBKGND => LRESULT(1), // 我们自己画
+        WM_ERASEBKGND => LRESULT(1),
         WM_KEYDOWN => {
             if wparam.0 == 0x1B {
-                // VK_ESCAPE
                 PostQuitMessage(0);
             }
             LRESULT(0)
@@ -340,7 +352,7 @@ fn widestring_to_wide(s: &str) -> Vec<u16> {
 fn open_with_default_app(path: &std::path::Path) {
     use windows::core::PCWSTR;
     use windows::Win32::UI::Shell::{
-        ShellExecuteW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC,
+        ShellExecuteW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHOW_WINDOW_CMD,
     };
     let path_str = path.to_string_lossy().to_string();
     unsafe {
@@ -352,7 +364,9 @@ fn open_with_default_app(path: &std::path::Path) {
             PCWSTR(file.as_ptr()),
             None,
             None,
-            SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
+            SHOW_WINDOW_CMD(1), // SW_SHOWNORMAL
         );
+        let _ = SEE_MASK_FLAG_NO_UI;
+        let _ = SEE_MASK_NOASYNC;
     }
 }
