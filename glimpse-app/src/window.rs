@@ -2,15 +2,14 @@
 //!
 //! 不依赖 Tauri/egui/iced，纯 windows-rs + GDI。
 
-use std::ptr::NonNull;
-
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, DeleteObject, EndPaint, PatBlt, SelectObject, PAINTSTRUCT, SRCCOPY,
-    WHITENESS,
+    BeginPaint, BitBlt, DeleteObject, EndPaint, PatBlt, PAINTSTRUCT, SRCCOPY, WHITENESS,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    DrawTextW, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
+// DrawTextW + DT_* 常量实际在 Win32::Graphics::Gdi
+use windows::Win32::Graphics::Gdi::{
+    DrawTextW, DT_BOTTOM, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_TOP,
+    DT_VCENTER, DT_WORDBREAK,
 };
 
 use crate::preview::PreviewContent;
@@ -40,7 +39,7 @@ impl PreviewWindow {
         unsafe {
             let mut ps = PAINTSTRUCT::default();
             let hdc = BeginPaint(hwnd, &mut ps);
-            if hdc.is_null() {
+            if hdc.0.is_null() {
                 return;
             }
 
@@ -140,7 +139,7 @@ unsafe fn draw_bitmap_centered(
     let (x, y) = ((win_w - tw) / 2, (win_h - th) / 2);
 
     let mem_dc = CreateCompatibleDC(hdc);
-    if mem_dc.is_null() {
+    if mem_dc.0.is_null() {
         return;
     }
     let old = SelectObject(mem_dc, hbm.into());

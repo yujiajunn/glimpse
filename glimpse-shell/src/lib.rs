@@ -23,10 +23,13 @@ use windows::Win32::Storage::FileSystem::{
     CreateFileW, WriteFile, FILE_ACCESS_RIGHTS, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
     OPEN_EXISTING,
 };
-// IClassFactory 实际在 System::Com（不在 UI::Shell）
-use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl, IPreviewHandler_Impl};
-// IPreviewHandler 在 UI::Shell
-use windows::Win32::UI::Shell::IPreviewHandler;
+// IClassFactory + IPreviewHandler 都在 UI::Shell（windows-rs 0.58）
+// _Impl trait 也由 implement 宏生成在同一模块
+use windows::Win32::UI::Shell::{
+    IClassFactory, IClassFactory_Impl, IPreviewHandler, IPreviewHandler_Impl,
+};
+// IStream + STREAM_SEEK_SET 在 System::Com（注意 _Impl 改名 + 命名冲突，要重命名）
+use windows::Win32::System::Com::{IStream, STREAM_SEEK_SET};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 // =========================================================================

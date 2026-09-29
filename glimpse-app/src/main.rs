@@ -9,7 +9,6 @@ mod preview;
 mod window;
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -37,8 +36,9 @@ struct TriggerMessage {
 }
 
 /// 全局预览状态：保证同时只有一个预览窗口
-static ACTIVE_PREVIEW: once_cell::sync::Lazy<Mutex<Option<window::PreviewWindow>>> =
-    once_cell::sync::Lazy::new(|| Mutex::new(None));
+/// 用 parking_lot::Mutex（不是 tokio）因为 HWND 含裸指针不是 Send/Sync
+static ACTIVE_PREVIEW: once_cell::sync::Lazy<parking_lot::Mutex<Option<window::PreviewWindow>>> =
+    once_cell::sync::Lazy::new(|| parking_lot::Mutex::new(None));
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
@@ -165,6 +165,9 @@ async fn show_preview(msg: TriggerMessage) {
         return;
     }
 
+    // 兜底用的 path 拷贝（decode 任务会 move 原 path）
+    let path_for_fallback = path.clone();
+
     // 解码文件（CPU 密集，可以放后台）
     let decode_result = tokio::task::spawn_blocking(move || {
         preview::decode_for_preview(&path)
@@ -175,13 +178,12 @@ async fn show_preview(msg: TriggerMessage) {
         Ok(Ok(c)) => c,
         Ok(Err(e)) => {
             error!("decode failed: {e:#}");
-            // 兜底：调系统默认应用打开
-            open_with_default_app(&path);
+            open_with_default_app(&path_for_fallback);
             return;
         }
         Err(e) => {
             error!("decode task panicked: {e}");
-            open_with_default_app(&path);
+            open_with_default_app(&path_for_fallback);
             return;
         }
     };
@@ -197,7 +199,8 @@ async fn show_preview(msg: TriggerMessage) {
 
 /// 在独立线程上跑一个消息循环，创建窗口 + 显示 bitmap + 等用户关闭
 fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<()> {
-    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, HMODULE};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, RegisterClassExW, GetMessageW, DispatchMessageW, TranslateMessage,
         MSG, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW, WS_POPUPWINDOW, WS_VISIBLE, WS_EX_TOPMOST,
@@ -217,9 +220,9 @@ fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<
         widestring_to_wide("GlimpsePreviewWindow")
     });
 
-    let hinstance = unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None) }
-        .map_err(|e| anyhow::anyhow!("GetModuleHandleW: {e}"))?
-        .unwrap_or_default();
+    let hinstance = unsafe { GetModuleHandleW(None) }
+        .map_err(|e| anyhow::anyhow!("GetModuleHandleW: {e}"))?;
+    let hinstance: HMODULE = HINSTANCE(hinstance.0);
 
     let wc = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -235,7 +238,7 @@ fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<
     }
 
     let title = widestring_to_wide("Glimpse Preview");
-    let hwnd = unsafe {
+    let hwnd_res = unsafe {
         CreateWindowExW(
             WS_EX_TOPMOST,
             windows::core::PCWSTR(CLASS_NAME.as_ptr()),
@@ -248,8 +251,9 @@ fn show_window(content: preview::PreviewContent, msg: TriggerMessage) -> Result<
             None,
         )
     };
+    let hwnd = hwnd_res.map_err(|e| anyhow::anyhow!("CreateWindowExW: {e}"))?;
     if hwnd.0.is_null() {
-        return Err(anyhow::anyhow!("CreateWindowExW failed"));
+        return Err(anyhow::anyhow!("CreateWindowExW returned null HWND"));
     }
 
     // 把 PreviewContent 关联到窗口（用窗口 user data 槽位 — 简化为全局静态）
@@ -333,22 +337,22 @@ fn widestring_to_wide(s: &str) -> Vec<u16> {
 }
 
 /// 调系统默认应用打开文件
-fn open_with_default_app(path: &PathBuf) {
+fn open_with_default_app(path: &std::path::Path) {
     use windows::core::PCWSTR;
     use windows::Win32::UI::Shell::{
-        ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW,
+        ShellExecuteW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC,
     };
+    let path_str = path.to_string_lossy().to_string();
     unsafe {
-        let verb = widestring_to_wide("open");
-        let file = widestring_to_wide(&path.to_string_lossy());
-        let info = SHELLEXECUTEINFOW {
-            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-            fMask: SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
-            lpVerb: PCWSTR(verb.as_ptr()),
-            lpFile: PCWSTR(file.as_ptr()),
-            nShow: 1, // SW_SHOWNORMAL
-            ..Default::default()
-        };
-        let _ = ShellExecuteExW(&info);
+        let verb = "open\0".encode_utf16().collect::<Vec<u16>>();
+        let file = (path_str + "\0").encode_utf16().collect::<Vec<u16>>();
+        let _ = ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            None,
+            None,
+            SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
+        );
     }
 }

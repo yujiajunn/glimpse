@@ -2,16 +2,16 @@
 //!
 //! 根据扩展名 / 文件头分发到不同的解码器。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
-use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Gdi::HBITMAP;
 
 /// 预览内容：解码后的 bitmap（HBITMAP + 原始宽高），或非图像（文本/视频）
 pub enum PreviewContent {
     /// 已渲染成 HBITMAP，窗口直接 BitBlt
     Bitmap {
-        handle: windows::Win32::Foundation::HBITMAP,
+        handle: HBITMAP,
         width: i32,
         height: i32,
         /// 原始文件大小（用于按比例缩放）
@@ -27,7 +27,7 @@ pub enum PreviewContent {
     /// 视频（已截首帧；或调外部播放器）
     Video {
         title: String,
-        bitmap: Option<windows::Win32::Foundation::HBITMAP>,
+        bitmap: Option<HBITMAP>,
         bitmap_size: Option<(i32, i32)>,
         duration_sec: f32,
         width: i32,
@@ -99,16 +99,14 @@ pub fn decode_for_preview(path: &Path) -> Result<PreviewContent> {
     let result = match kind {
         Kind::Image => decode_image(path, &title),
         Kind::Pdf => decode_pdf(path, &title),
-        Kind::Video | Kind::Audio => decode_media(path, &title, kind),
+        Kind::Video | Kind::Audio => decode_media(path, &title),
         Kind::Text | Kind::Code => decode_text(path, &title),
         Kind::Markdown => decode_markdown(path, &title),
         Kind::Html => decode_html(path, &title),
-        Kind::Font => decode_font(path, &title),
-        Kind::Office => decode_office(path, &title),
-        Kind::Archive => decode_archive(path, &title),
-        Kind::Unknown => Ok(PreviewContent::Unsupported {
-            reason: format!("未支持的扩展名: {}", path.display()),
-        }),
+        Kind::Font => decode_font(path),
+        Kind::Office => decode_office(path),
+        Kind::Archive => decode_archive(path),
+        Kind::Unknown => decode_unsupported(path),
     };
 
     if let Ok(PreviewContent::Unsupported { .. }) = &result {
@@ -123,11 +121,8 @@ pub fn decode_for_preview(path: &Path) -> Result<PreviewContent> {
 // ================================================================
 
 fn decode_image(path: &Path, title: &str) -> Result<PreviewContent> {
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
-        SetStretchBltMode, StretchBltMode, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-        SRCCOPY,
+        CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, DIB_PAL_COLORS,
     };
 
     let dyn_img = image::open(path)
@@ -171,7 +166,7 @@ fn decode_image(path: &Path, title: &str) -> Result<PreviewContent> {
             bmiColors: [Default::default(); 1],
         };
 
-        let mut bits: *mut u8 = std::ptr::null_mut();
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
         let hbm = CreateDIBSection(
             None,
             &bmi,
@@ -182,7 +177,7 @@ fn decode_image(path: &Path, title: &str) -> Result<PreviewContent> {
         )?;
 
         // 拷贝 RGBA 数据到位图
-        std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits, pixels.len());
+        std::ptr::copy_nonoverlapping(pixels.as_ptr() as *const u8, bits as *mut u8, pixels.len());
 
         Ok(PreviewContent::Bitmap {
             handle: hbm,
@@ -205,7 +200,7 @@ fn decode_pdf(path: &Path, title: &str) -> Result<PreviewContent> {
     };
     use pdfium_render::prelude::*;
 
-    let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().ok())
+    let pdfium = Pdfium::new(Pdfium::bind_to_system_library().ok())
         .context("pdfium library")?;
 
     let document = pdfium
@@ -240,9 +235,9 @@ fn decode_pdf(path: &Path, title: &str) -> Result<PreviewContent> {
             },
             bmiColors: [Default::default(); 1],
         };
-        let mut bits: *mut u8 = std::ptr::null_mut();
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
         let hbm = CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0)?;
-        std::ptr::copy_nonoverlapping(raw.as_ptr(), bits, raw.len());
+        std::ptr::copy_nonoverlapping(raw.as_ptr() as *const u8, bits as *mut u8, raw.len());
 
         Ok(PreviewContent::Bitmap {
             handle: hbm,
@@ -333,33 +328,24 @@ fn decode_html(path: &Path, title: &str) -> Result<PreviewContent> {
 // 字体 — 调系统字体查看器
 // ================================================================
 
-fn decode_font(path: &Path, title: &str) -> Result<PreviewContent> {
-    open_with_default_app(&path.to_path_buf());
-    Ok(PreviewContent::Unsupported {
-        reason: format!("字体文件 {} 已用系统查看器打开", title),
-    })
+fn decode_font(path: &Path) -> Result<PreviewContent> {
+    decode_unsupported(path)
 }
 
 // ================================================================
 // Office — 调 LibreOffice / Word 转 PDF 再渲染，或直接调默认
 // ================================================================
 
-fn decode_office(path: &Path, title: &str) -> Result<PreviewContent> {
-    open_with_default_app(&path.to_path_buf());
-    Ok(PreviewContent::Unsupported {
-        reason: format!("Office 文件 {} 调默认应用打开", title),
-    })
+fn decode_office(path: &Path) -> Result<PreviewContent> {
+    decode_unsupported(path)
 }
 
 // ================================================================
 // 压缩包 — 调 7-Zip / 系统
 // ================================================================
 
-fn decode_archive(path: &Path, title: &str) -> Result<PreviewContent> {
-    open_with_default_app(&path.to_path_buf());
-    Ok(PreviewContent::Unsupported {
-        reason: format!("压缩包 {} 调系统查看器打开", title),
-    })
+fn decode_archive(path: &Path) -> Result<PreviewContent> {
+    decode_unsupported(path)
 }
 
 fn open_with_default_app(path: &Path) {
