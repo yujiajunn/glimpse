@@ -31,11 +31,15 @@ jobs:
         with:
           workspaces: |
             . -> target
-      - run: cargo build --release --target ${{ matrix.target }} --bin glimpse
-      - uses: actions/upload-artifact@v4
+      - run: cargo build --release --target ${{ matrix.target }} --bin glimpse 2>&1 | tee /tmp/app_build.log
+        continue-on-error: true
+
+      - name: Upload app build log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: glimpse-exe-${{ matrix.arch }}
-          path: target/${{ matrix.target }}/release/glimpse.exe
+          name: app-build-log-${{ matrix.arch }}
+          path: /tmp/app_build.log
 
   shell-dll:
     name: Shell DLL (${{ matrix.target }})
@@ -57,11 +61,15 @@ jobs:
           workspaces: |
             glimpse-shell -> glimpse-shell/target
       - working-directory: glimpse-shell
-        run: cargo build --release --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+        run: cargo build --release --target ${{ matrix.target }} 2>&1 | tee /tmp/dll_build.log
+        continue-on-error: true
+
+      - name: Upload DLL build log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: shell-dll-${{ matrix.target == 'x86_64-pc-windows-msvc' && 'x64' || 'x86' }}
-          path: glimpse-shell/target/${{ matrix.target }}/release/glimpse_previewhandler.dll
+          name: dll-build-log-${{ matrix.arch }}
+          path: /tmp/dll_build.log
 
   release:
     name: Release
