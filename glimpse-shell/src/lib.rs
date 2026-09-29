@@ -17,19 +17,18 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, WriteFile, FILE_ACCESS_RIGHTS, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
     OPEN_EXISTING,
 };
-// IClassFactory + IClassFactory_Impl 都在 System::Com（windows-rs 0.58）
 use windows::Win32::System::Com::{
     IClassFactory, IClassFactory_Impl, IStream, STREAM_SEEK_SET,
 };
-// IPreviewHandler + IPreviewHandler_Impl 在 UI::Shell
 use windows::Win32::UI::Shell::{IPreviewHandler, IPreviewHandler_Impl};
 use windows::Win32::UI::WindowsAndMessaging::*;
+// windows-implement 的 #[implement] 属性宏
+use windows_implement::implement;
 
 // =========================================================================
 // CLSID（com.local.glimpse.shell.preview）
@@ -81,28 +80,18 @@ impl Default for PreviewHandlerImpl {
     }
 }
 
-impl IPreviewHandler_Impl for PreviewHandlerImpl {
-    fn SetWindow(&self, hwnd: HWND, prc: *const RECT) -> windows_core::Result<()> {
-        let rect = unsafe {
-            if prc.is_null() {
-                RECT::default()
-            } else {
-                *prc
-            }
-        };
-        let mut state = self.state.lock().unwrap();
+impl IPreviewHandler_Impl for PreviewHandlerImpl_Impl {
+    fn SetWindow(&self, hwnd: HWND, prc: &RECT) -> windows_core::Result<()> {
+        let rect = *prc;
+        let mut state = self.0.state.lock().unwrap();
         state.hwnd = hwnd;
         state.rect = rect;
         Ok(())
     }
 
-    fn SetRect(&self, prc: *const RECT) -> windows_core::Result<()> {
-        if prc.is_null() {
-            return Ok(());
-        }
-        let rect = unsafe { *prc };
-        let mut state = self.state.lock().unwrap();
-        state.rect = rect;
+    fn SetRect(&self, prc: &RECT) -> windows_core::Result<()> {
+        let mut state = self.0.state.lock().unwrap();
+        state.rect = *prc;
         Ok(())
     }
 
@@ -111,7 +100,6 @@ impl IPreviewHandler_Impl for PreviewHandlerImpl {
             return Ok(());
         };
 
-        // 1. 写临时文件
         let tmp_path = match stream_to_temp_file(stream) {
             Ok(p) => p,
             Err(e) => {
@@ -121,8 +109,7 @@ impl IPreviewHandler_Impl for PreviewHandlerImpl {
         };
         tracing::info!(file = %tmp_path.display(), "do preview");
 
-        // 2. 通过命名管道通知主进程
-        let state = self.state.lock().unwrap();
+        let state = self.0.state.lock().unwrap();
         let ipc = PreviewRequestIPC {
             path: tmp_path.to_string_lossy().to_string(),
             hwnd: state.hwnd.0 as isize,
@@ -165,7 +152,7 @@ impl IPreviewHandler_Impl for PreviewHandlerImpl {
 #[implement(IClassFactory)]
 struct ClassFactory;
 
-impl IClassFactory_Impl for ClassFactory {
+impl IClassFactory_Impl for ClassFactory_Impl {
     fn CreateInstance(
         &self,
         punkouter: Option<&IUnknown>,
