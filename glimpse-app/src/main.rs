@@ -35,8 +35,8 @@ struct TriggerMessage {
     rect_h: i32,
 }
 
-/// 全局预览状态：保证同时只有一个预览窗口
-/// ACTIVE_HWND 存 HWND 指针（isize 是 Send）。PreviewWindow 不进 static。
+/// 全局预览状态：HWND 指针值（isize 是 Send）
+/// ACTIVE_HWND 存 isize。PreviewWindow 不进全局。
 static ACTIVE_HWND: once_cell::sync::Lazy<parking_lot::Mutex<isize>> =
     once_cell::sync::Lazy::new(|| parking_lot::Mutex::new(0));
 

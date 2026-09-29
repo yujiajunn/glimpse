@@ -27,7 +27,7 @@ sha2 = "0.10"
 once_cell = "1"
 base64 = "0.22"
 
-# Windows FFI — 0.62+ 才有 _Impl trait
+# Windows FFI — 用 windows-implement 实际存在的版本（0.60.2 在 0.62 自带的 windows-implement 还没发布时是唯一可用）
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Com",
@@ -44,7 +44,8 @@ windows = { version = "0.62", features = [
     "Win32_System_Memory",
 ] }
 windows-core = "0.62"
-windows-implement = "0.62"
+# windows-implement 0.60 配 windows 0.62（不同小版本通常兼容）
+windows-implement = "0.60"
 
 # Decoders
 image = { version = "0.25", default-features = false, features = ["default-formats"] }

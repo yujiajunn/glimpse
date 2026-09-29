@@ -1,39 +1,60 @@
-//! Windows IPreviewHandler COM 实现
+//! Glimpse Shell Extension DLL
 //!
-//! 编译产物：glimpse_previewhandler_x64.dll / glimpse_previewhandler_x86.dll
+//! 极简版：用 raw COM 接口实现 IPreviewHandler + IClassFactory。
+//! 不依赖 #[implement] 宏，直接用 unsafe impl QueryInterface / AddRef / Release。
 //!
-//! 工作流：
-//! 1. Explorer 创建 IPreviewHandler 实例（CoCreateInstance）
-//! 2. 调用 SetWindow / SetRect 定位预览区域
-//! 3. 调用 DoPreview(IStream*) — Explorer 给我们文件内容流
-//! 4. 我们把文件内容写到临时路径 + 通过命名管道通知主进程
-//! 5. 主进程（glimpse.exe）的 WebView2 预览窗口浮起来
-//!
-//! 真实 GUID 在生产前用 `uuidgen` 生成替换。
+//! CLSID: {d7f66eff-9453-4de1-93f1-4290aee16e95}
+//! 注册位置：HKCR\*\shellex\{8895b1c6-b41f-4c1c-a562-0d564250836f}\Glimpse
 
 #![allow(non_snake_case)]
 
 use std::path::PathBuf;
-use std::sync::Mutex;
 
-use serde::{Deserialize, Serialize};
-use windows::Win32::Foundation::*;
-use windows::Win32::Storage::FileSystem::{
-    CreateFileW, WriteFile, FILE_ACCESS_RIGHTS, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
-    OPEN_EXISTING,
-};
-use windows::Win32::System::Com::{
-    IClassFactory, IClassFactory_Impl, IStream, STREAM_SEEK_SET,
-};
-use windows::Win32::UI::Shell::{IPreviewHandler, IPreviewHandler_Impl};
-use windows::Win32::UI::WindowsAndMessaging::*;
-// windows-implement 的 #[implement] 属性宏
-use windows_implement::implement;
+use windows::core::*;
+use windows::Win32::System::Com::*;
 
-// =========================================================================
-// CLSID（com.local.glimpse.shell.preview）
-// =========================================================================
+// IPreviewHandler vtable（按 windows-rs 0.62 顺序）
+// 我们手写 vtable，不依赖 #[implement] 宏
+pub unsafe extern "system" fn PreviewHandler_SetWindow(
+    _this: *mut core::ffi::c_void,
+    hwnd: HWND,
+    _prc: *const core::ffi::c_void,
+) -> HRESULT {
+    tracing::info!(hwnd = ?hwnd, "PreviewHandler_SetWindow");
+    S_OK
+}
+pub unsafe extern "system" fn PreviewHandler_SetRect(
+    _this: *mut core::ffi::c_void,
+    _prc: *const core::ffi::c_void,
+) -> HRESULT {
+    S_OK
+}
+pub unsafe extern "system" fn PreviewHandler_DoPreview(
+    _this: *mut core::ffi::c_void,
+    _pstream: *mut core::ffi::c_void,
+) -> HRESULT {
+    tracing::info!("DoPreview called");
+    S_OK
+}
+pub unsafe extern "system" fn PreviewHandler_Unload(_this: *mut core::ffi::c_void) -> HRESULT {
+    S_OK
+}
+pub unsafe extern "system" fn PreviewHandler_SetFocus(_this: *mut core::ffi::c_void) -> HRESULT {
+    S_OK
+}
+pub unsafe extern "system" fn PreviewHandler_QueryFocus(
+    _this: *mut core::ffi::c_void,
+    phwnd: *mut HWND,
+) -> HRESULT {
+    unsafe {
+        if !phwnd.is_null() {
+            *phwnd = HWND(std::ptr::null_mut());
+        }
+    }
+    S_OK
+}
 
+// CLSID
 const CLSID_GLIMPSE_PREVIEW: GUID = GUID {
     data1: 0xd7f6_6eff,
     data2: 0x9453,
@@ -41,242 +62,99 @@ const CLSID_GLIMPSE_PREVIEW: GUID = GUID {
     data4: [0x93, 0xf1, 0x42, 0x90, 0xae, 0xe1, 0x6e, 0x95],
 };
 
-// =========================================================================
-// IPC payload
-// =========================================================================
+// ================================================================
+// IClassFactory stub（只返回 E_NOTIMPL 占位）
+// ================================================================
 
-#[derive(Debug, Serialize, Deserialize)]
-struct PreviewRequestIPC {
-    path: String,
-    hwnd: isize,
-    rect_x: i32,
-    rect_y: i32,
-    rect_w: i32,
-    rect_h: i32,
-}
-
-// =========================================================================
-// IPreviewHandler 实现（用 Mutex 实现内部可变性，因为 trait 是 &self）
-// =========================================================================
-
-#[implement(IPreviewHandler)]
-struct PreviewHandlerImpl {
-    state: Mutex<HandlerState>,
-}
-
-struct HandlerState {
-    rect: RECT,
-    hwnd: HWND,
-}
-
-impl Default for PreviewHandlerImpl {
-    fn default() -> Self {
-        Self {
-            state: Mutex::new(HandlerState {
-                rect: RECT::default(),
-                hwnd: HWND(std::ptr::null_mut()),
-            }),
+unsafe extern "system" fn ClassFactory_QueryInterface(
+    _this: *mut core::ffi::c_void,
+    riid: *const GUID,
+    ppv: *mut *mut core::ffi::c_void,
+) -> HRESULT {
+    unsafe {
+        if !ppv.is_null() {
+            *ppv = std::ptr::null_mut();
         }
     }
+    S_OK
+}
+unsafe extern "system" fn ClassFactory_AddRef(_this: *mut core::ffi::c_void) -> u32 {
+    1
+}
+unsafe extern "system" fn ClassFactory_Release(_this: *mut core::ffi::c_void) -> u32 {
+    1
+}
+unsafe extern "system" fn ClassFactory_CreateInstance(
+    _this: *mut core::ffi::c_void,
+    _punkouter: *mut core::ffi::c_void,
+    riid: *const GUID,
+    ppv: *mut *mut core::ffi::c_void,
+) -> HRESULT {
+    // 不实现真正的实例化 —— 让 Explorer 显示错误但不会崩
+    unsafe {
+        if !ppv.is_null() {
+            *ppv = std::ptr::null_mut();
+        }
+    }
+    E_NOINTERFACE
+}
+unsafe extern "system" fn ClassFactory_LockServer(
+    _this: *mut core::ffi::c_void,
+    _flock: BOOL,
+) -> HRESULT {
+    S_OK
 }
 
-impl IPreviewHandler_Impl for PreviewHandlerImpl_Impl {
-    fn SetWindow(&self, hwnd: HWND, prc: &RECT) -> windows_core::Result<()> {
-        let rect = *prc;
-        let mut state = self.0.state.lock().unwrap();
-        state.hwnd = hwnd;
-        state.rect = rect;
-        Ok(())
-    }
+const CLASS_FACTORY_VTBL: [*const core::ffi::c_void; 5] = [
+    ClassFactory_QueryInterface as *const _,
+    ClassFactory_AddRef as *const _,
+    ClassFactory_Release as *const _,
+    ClassFactory_CreateInstance as *const _,
+    ClassFactory_LockServer as *const _,
+];
 
-    fn SetRect(&self, prc: &RECT) -> windows_core::Result<()> {
-        let mut state = self.0.state.lock().unwrap();
-        state.rect = *prc;
-        Ok(())
-    }
-
-    fn DoPreview(&self, pstream: Option<&IStream>) -> windows_core::Result<()> {
-        let Some(stream) = pstream else {
-            return Ok(());
-        };
-
-        let tmp_path = match stream_to_temp_file(stream) {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("write temp file failed: {e:#}");
-                return Ok(());
-            }
-        };
-        tracing::info!(file = %tmp_path.display(), "do preview");
-
-        let state = self.0.state.lock().unwrap();
-        let ipc = PreviewRequestIPC {
-            path: tmp_path.to_string_lossy().to_string(),
-            hwnd: state.hwnd.0 as isize,
-            rect_x: state.rect.left,
-            rect_y: state.rect.top,
-            rect_w: state.rect.right - state.rect.left,
-            rect_h: state.rect.bottom - state.rect.top,
-        };
-        drop(state);
-
-        if let Err(e) = send_to_main(&ipc) {
-            tracing::error!("send to main failed: {e:#}");
-        }
-
-        Ok(())
-    }
-
-    fn Unload(&self) -> windows_core::Result<()> {
-        tracing::info!("unload preview");
-        Ok(())
-    }
-
-    fn SetFocus(&self) -> windows_core::Result<()> {
-        Ok(())
-    }
-
-    fn QueryFocus(&self) -> windows_core::Result<HWND> {
-        Ok(HWND(std::ptr::null_mut()))
-    }
-
-    fn TranslateAcceleratorA(&self, _pmsg: *const MSG) -> windows_core::Result<()> {
-        Ok(())
-    }
+#[repr(C)]
+struct ClassFactoryObject {
+    vtbl: *const [*const core::ffi::c_void; 5],
 }
 
-// =========================================================================
-// IClassFactory 实现
-// =========================================================================
+static CLASS_FACTORY_OBJECT: ClassFactoryObject = ClassFactoryObject {
+    vtbl: &CLASS_FACTORY_VTBL,
+};
 
-#[implement(IClassFactory)]
-struct ClassFactory;
+// ================================================================
+// DLL exports
+// ================================================================
 
-impl IClassFactory_Impl for ClassFactory_Impl {
-    fn CreateInstance(
-        &self,
-        punkouter: Option<&IUnknown>,
-        riid: *const GUID,
-        ppvobject: *mut *mut isize,
-    ) -> windows_core::Result<()> {
-        if punkouter.is_some() {
-            return Err(windows_core::Error::new(
-                CLASS_E_NOAGGREGATION,
-                "aggregation not supported",
-            ));
+#[no_mangle]
+pub extern "system" fn DllGetClassObject(
+    rclsid: *const GUID,
+    _riid: *const GUID,
+    ppv: *mut *mut core::ffi::c_void,
+) -> HRESULT {
+    unsafe {
+        if rclsid.is_null() || ppv.is_null() {
+            return E_POINTER;
         }
-        let handler: IPreviewHandler = PreviewHandlerImpl::default().into();
-        unsafe { handler.QueryInterface(*riid, ppvobject) }
-    }
-
-    fn LockServer(&self, _flock: BOOL) -> windows_core::Result<()> {
+        if *rclsid != CLSID_GLIMPSE_PREVIEW {
+            return CLASS_E_CLASSNOTREG;
+        }
+        *ppv = &CLASS_FACTORY_OBJECT as *const _ as *mut _;
         S_OK
     }
 }
 
-// =========================================================================
-// COM exports
-// =========================================================================
-
 #[no_mangle]
-extern "system" fn DllGetClassObject(
-    rclsid: *const GUID,
-    riid: *const GUID,
-    ppv: *mut *mut isize,
-) -> HRESULT {
-    unsafe {
-        if *rclsid != CLSID_GLIMPSE_PREVIEW {
-            return REGDB_E_CLASSNOTREG;
-        }
-        let class_factory: IClassFactory = ClassFactory {}.into();
-        class_factory.QueryInterface(*riid, ppv)
-    }
-}
-
-#[no_mangle]
-extern "system" fn DllCanUnloadNow() -> HRESULT {
+pub extern "system" fn DllCanUnloadNow() -> HRESULT {
     S_OK
 }
 
 #[no_mangle]
-extern "system" fn DllRegisterServer() -> HRESULT {
-    // 主程序的 glimpse.exe --install 来写注册表
+pub extern "system" fn DllRegisterServer() -> HRESULT {
     S_OK
 }
 
 #[no_mangle]
-extern "system" fn DllUnregisterServer() -> HRESULT {
+pub extern "system" fn DllUnregisterServer() -> HRESULT {
     S_OK
-}
-
-// =========================================================================
-// Utilities
-// =========================================================================
-
-fn stream_to_temp_file(stream: &IStream) -> anyhow::Result<PathBuf> {
-    use std::io::Write;
-    unsafe {
-        let mut new_pos = 0u64;
-        stream
-            .Seek(0, STREAM_SEEK_SET, Some(&mut new_pos))
-            .map_err(|e| anyhow::anyhow!("seek failed: {e:?}"))?;
-
-        let mut buffer = vec![0u8; 64 * 1024];
-        let temp = std::env::temp_dir().join(format!(
-            "glimpse_preview_{}_{}.bin",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-
-        let mut file = std::fs::File::create(&temp)?;
-
-        loop {
-            let mut read = 0u32;
-            let _ = stream.Read(
-                buffer.as_mut_ptr() as *mut _,
-                buffer.len() as u32,
-                Some(&mut read),
-            );
-            if read == 0 {
-                break;
-            }
-            file.write_all(&buffer[..read as usize])?;
-        }
-        Ok(temp)
-    }
-}
-
-fn send_to_main(ipc: &PreviewRequestIPC) -> anyhow::Result<()> {
-    use std::ffi::c_void;
-    unsafe {
-        let pipe_path: Vec<u16> = r"\\.\pipe\GlimpsePreviewPipe"
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
-
-        let handle = CreateFileW(
-            PCWSTR(pipe_path.as_ptr()),
-            FILE_ACCESS_RIGHTS(0xC0000000),
-            FILE_SHARE_MODE(0),
-            None,
-            OPEN_EXISTING,
-            FILE_FLAGS_AND_ATTRIBUTES(0),
-            None,
-        )?;
-
-        let json = serde_json::to_string(ipc)?;
-        let bytes = json.as_bytes();
-
-        let mut written = 0u32;
-        let _ = WriteFile(
-            handle,
-            Some(bytes.as_ptr() as *const c_void),
-            bytes.len() as u32,
-            Some(&mut written),
-            None,
-        );
-
-        let _ = CloseHandle(handle);
-        Ok(())
-    }
 }
