@@ -23,8 +23,10 @@ use windows::Win32::Storage::FileSystem::{
     CreateFileW, WriteFile, FILE_ACCESS_RIGHTS, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
     OPEN_EXISTING,
 };
-use windows::Win32::System::Com::*;
-use windows::Win32::UI::Shell::{IClassFactory, IPreviewHandler};
+// IClassFactory 实际在 System::Com（不在 UI::Shell）
+use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl, IPreviewHandler_Impl};
+// IPreviewHandler 在 UI::Shell
+use windows::Win32::UI::Shell::IPreviewHandler;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 // =========================================================================
