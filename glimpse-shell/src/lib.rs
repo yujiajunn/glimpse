@@ -19,7 +19,12 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use windows::core::*;
 use windows::Win32::Foundation::*;
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, WriteFile, FILE_ACCESS_RIGHTS, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
+    OPEN_EXISTING,
+};
 use windows::Win32::System::Com::*;
+use windows::Win32::UI::Shell::{IClassFactory, IPreviewHandler};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 // =========================================================================
@@ -190,7 +195,7 @@ extern "system" fn DllGetClassObject(
 ) -> HRESULT {
     unsafe {
         if *rclsid != CLSID_GLIMPSE_PREVIEW {
-            return CLASS_E_CLASSNOTREG;
+            return REGDB_E_CLASSNOTREG;
         }
         let class_factory: IClassFactory = ClassFactory {}.into();
         class_factory.QueryInterface(*riid, ppv)
